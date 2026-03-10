@@ -1,0 +1,17 @@
+node_modules/
+dist/
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Local env files (if you add secrets later)
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
