@@ -1,9 +1,9 @@
 import type { Ship } from "./entities/ship.js";
 import { createWeapon, type WeaponKind } from "./weapon.js";
 
-/** XP för att nå nästa nivå. */
+/** XP för att nå nästa nivå. Snabb progression – flatter curve, lägre bas. */
 export function xpRequiredForNextLevel(currentLevel: number): number {
-  return Math.floor(28 * Math.pow(currentLevel, 1.18));
+  return Math.floor(16 * Math.pow(currentLevel, 1.06));
 }
 
 /** Total XP krävs för att nå nivå. */
@@ -24,8 +24,8 @@ export type WeaponUpgrade =
   | "weaponFireRate"
   | "weaponLifetime";
 
-/** Lägg till nytt vapen i en tom slot. */
-export type AddWeaponUpgrade = `addWeapon_${0 | 1 | 2}`;
+/** Lägg till nytt vapen i första lediga slot (0 → 1 → 2). */
+export type AddWeaponUpgrade = "addWeapon";
 
 export type UpgradeCategory =
   | PlayerUpgrade
@@ -142,13 +142,12 @@ export function generateUpgradeOptions(ship: Ship): UpgradeOption[] {
       }
     }
   }
-  for (const slot of emptySlots) {
-    for (const kind of availableNewWeapons) {
+  for (const kind of availableNewWeapons) {
+    if (emptySlots.length > 0) {
       pool.push({
-        category: `addWeapon_${slot}` as AddWeaponUpgrade,
+        category: "addWeapon",
         percent: 0,
         label: "",
-        weaponIndex: slot,
         weaponKind: kind,
       });
     }
@@ -162,8 +161,8 @@ export function generateUpgradeOptions(ship: Ship): UpgradeOption[] {
     if (chosen.length >= 3) break;
 
     let typeKey: string;
-    if ((opt.category as string).startsWith("addWeapon_")) {
-      typeKey = `add_${opt.weaponIndex}_${opt.weaponKind}`;
+    if (opt.category === "addWeapon") {
+      typeKey = `add_${opt.weaponKind}`;
     } else if (opt.weaponIndex !== undefined) {
       const base = (opt.category as string).replace(/_\d$/, "");
       typeKey = `weapon_${opt.weaponIndex}_${base}`;
@@ -175,13 +174,13 @@ export function generateUpgradeOptions(ship: Ship): UpgradeOption[] {
     usedTypes.add(typeKey);
 
     const percent = randomUpgradePercent(ship.luck);
-    if ((opt.category as string).startsWith("addWeapon_") && opt.weaponKind) {
+    if (opt.category === "addWeapon" && opt.weaponKind) {
       chosen.push({
         ...opt,
         percent,
-        label: `Add ${WEAPON_DISPLAY_NAMES[opt.weaponKind]} (slot ${opt.weaponIndex! + 1})`,
+        label: `Add ${WEAPON_DISPLAY_NAMES[opt.weaponKind]}`,
       });
-    } else if (opt.weaponIndex !== undefined && !opt.category.toString().startsWith("addWeapon")) {
+    } else if (opt.weaponIndex !== undefined && opt.category !== "addWeapon") {
       const stat = (opt.category as string).replace(/_\d$/, "") as WeaponUpgrade;
       chosen.push({
         ...opt,
@@ -202,8 +201,11 @@ export function generateUpgradeOptions(ship: Ship): UpgradeOption[] {
 
 /** Applicerar vald uppgradering. */
 export function applyUpgrade(ship: Ship, option: UpgradeOption): void {
-  if ((option.category as string).startsWith("addWeapon_") && option.weaponKind && option.weaponIndex !== undefined) {
-    ship.weapons[option.weaponIndex] = createWeapon(option.weaponKind);
+  if (option.category === "addWeapon" && option.weaponKind) {
+    const firstEmpty = ship.weapons.findIndex((w) => w === null);
+    if (firstEmpty >= 0) {
+      ship.weapons[firstEmpty] = createWeapon(option.weaponKind);
+    }
     return;
   }
 

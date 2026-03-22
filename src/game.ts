@@ -38,6 +38,14 @@ import {
   type UpgradeOption,
 } from "./leveling.js";
 import { WEAPON_NAMES } from "./weapon.js";
+import {
+  createExplosion,
+  createPulse,
+  createConePulse,
+  isEffectAlive,
+  drawEffect,
+  type GameEffect,
+} from "./effects.js";
 
 function drawStatsUI(
   ctx: CanvasRenderingContext2D,
@@ -207,21 +215,21 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, width: number, height: 
   const pad = 20;
   const statsLineH = 16;
   const statsFont = "12px sans-serif";
-  const panelW = 180;
+  const panelW = 280;
   const panelH = pad * 2 + 8 * statsLineH;
-  const gap = 24;
+  const gap = 20;
 
-  let y = 40;
+  let y = 36;
 
-  ctx.font = "32px sans-serif";
+  ctx.font = "28px sans-serif";
   ctx.fillStyle = "#fff";
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText("PAUSED", width / 2, y);
-  y += 48 + gap;
+  y += 44 + gap;
 
   const panelX = (width - panelW) / 2;
-  const panelY = y;
+  let panelY = y;
   y += panelH + gap;
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
@@ -251,6 +259,55 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, width: number, height: 
     ctx.fillStyle = "#fff";
     ctx.textAlign = "right";
     ctx.fillText(value, panelX + panelW - 10, rowY);
+    ctx.textAlign = "left";
+  }
+
+  const weaponSlotCount = ship.weapons.filter((w) => w !== null).length;
+  if (weaponSlotCount > 0) {
+    y += gap;
+    const weaponHeaderH = 20;
+    const weaponStatsPerSlot = 3;
+    const weaponBlockH = pad * 2 + weaponHeaderH + weaponSlotCount * (statsLineH + weaponStatsPerSlot * statsLineH);
+    const weaponPanelY = y;
+    y += weaponBlockH + gap;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.fillRect(panelX, weaponPanelY, panelW, weaponBlockH);
+    ctx.strokeRect(panelX, weaponPanelY, panelW, weaponBlockH);
+
+    ctx.fillStyle = "#8af";
+    ctx.font = "11px sans-serif";
+    ctx.fillText("WEAPONS", panelX + 10, weaponPanelY + 8);
+    ctx.font = statsFont;
+
+    let rowY = weaponPanelY + pad + weaponHeaderH;
+    for (let i = 0; i < 3; i++) {
+      const weapon = ship.weapons[i];
+      if (!weapon) continue;
+      const isSelected = i === ship.selectedWeaponSlot;
+      const name = WEAPON_NAMES[weapon.kind];
+      ctx.textAlign = "left";
+      ctx.fillStyle = isSelected ? "#fff" : "#bbb";
+      ctx.font = isSelected ? "12px sans-serif" : "11px sans-serif";
+      ctx.fillText(`Slot ${i + 1}: ${name}${isSelected ? " (selected)" : ""}`, panelX + 14, rowY);
+      rowY += statsLineH;
+      const weaponStatRows: [string, string][] = [
+        ["Damage", `${weapon.damageModifier.toFixed(1)}×`],
+        ["Fire rate", `${weapon.fireRateModifier.toFixed(1)}×`],
+        ["Range", `${weapon.lifetimeModifier.toFixed(1)}×`],
+      ];
+      for (const [label, value] of weaponStatRows) {
+        ctx.fillStyle = "#aaa";
+        ctx.font = statsFont;
+        ctx.textAlign = "left";
+        ctx.fillText(label, panelX + 14, rowY);
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "right";
+        ctx.fillText(value, panelX + panelW - 10, rowY);
+        rowY += statsLineH;
+      }
+    }
     ctx.textAlign = "left";
   }
 
@@ -284,6 +341,7 @@ export interface Game {
   bombs: Bomb[];
   mines: Mine[];
   lasers: LaserLine[];
+  effects: GameEffect[];
   keys: InputState;
   width: number;
   height: number;
@@ -310,6 +368,7 @@ function resetGame(game: Game): void {
   game.bombs = [];
   game.mines = [];
   game.lasers = [];
+  game.effects = [];
   game.asteroidSpawnTimer = 0;
   game.running = true;
   game.paused = false;
@@ -369,6 +428,7 @@ export function createGame(canvas: HTMLCanvasElement): Game {
     bombs: [],
     mines: [],
     lasers: [],
+    effects: [],
     keys: { up: false, left: false, right: false, fire: false, selectedSlot: 0 },
     width,
     height,
@@ -494,6 +554,17 @@ function tick(game: Game, time: number): void {
               }
             }
           }
+          if (weapon.kind === "pulse") {
+            game.effects.push(createPulse(game.ship.position, CONFIG.pulseRadius, gameTime));
+          } else {
+            game.effects.push(createConePulse(
+              game.ship.position,
+              game.ship.rotation,
+              CONFIG.conePulseAngle / 2,
+              CONFIG.conePulseRange,
+              gameTime
+            ));
+          }
         } else if (weapon.kind === "laser") {
           game.lasers.push(createLaser(game.ship, weapon, sel));
         }
@@ -547,6 +618,7 @@ function tick(game: Game, time: number): void {
 
     for (const b of game.bombs) {
       if (b.fuse <= 0) {
+        game.effects.push(createExplosion(b.position, b.explosionRadius, time / 1000));
         for (const asteroid of game.asteroids) {
           const dx = asteroid.position.x - b.position.x;
           const dy = asteroid.position.y - b.position.y;
@@ -560,6 +632,7 @@ function tick(game: Game, time: number): void {
     for (const m of game.mines) {
       for (const asteroid of game.asteroids) {
         if (mineTriggered(m, asteroid)) {
+          game.effects.push(createExplosion(m.position, m.explosionRadius, time / 1000));
           for (const a of game.asteroids) {
             const dx = a.position.x - m.position.x;
             const dy = a.position.y - m.position.y;
@@ -615,6 +688,8 @@ function tick(game: Game, time: number): void {
     game.bombs = game.bombs.filter(isBombAlive);
     game.mines = game.mines.filter((m) => m.explosionRadius > 0);
     game.lasers = game.lasers.filter((l) => l.lifetime > 0);
+    const nowSec = time / 1000;
+    game.effects = game.effects.filter((e) => isEffectAlive(e, nowSec));
     for (const asteroid of game.asteroids) {
       if (isAsteroidDead(asteroid)) {
         const reward = getAsteroidReward(asteroid);
@@ -664,6 +739,9 @@ function tick(game: Game, time: number): void {
   }
   for (const laser of game.lasers) {
     drawLaser(game.ctx, laser);
+  }
+  for (const e of game.effects) {
+    drawEffect(game.ctx, e, time / 1000);
   }
 
   game.ctx.restore();
