@@ -592,16 +592,6 @@ function tick(game: Game, time: number): void {
       updateAsteroid(asteroid, dt, worldWidth, worldHeight);
     }
 
-    for (let i = 0; i < game.asteroids.length; i++) {
-      for (let j = i + 1; j < game.asteroids.length; j++) {
-        const a = game.asteroids[i]!;
-        const b = game.asteroids[j]!;
-        if (circleVsCircle(asteroidCollisionCircle(a), asteroidCollisionCircle(b))) {
-          resolveBounce(asteroidMovingCircle(a), asteroidMovingCircle(b), CONFIG.restitution);
-        }
-      }
-    }
-
     const shipCircle = shipMovingCircle(game.ship);
     for (const p of game.projectiles) {
       for (const asteroid of game.asteroids) {
