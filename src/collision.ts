@@ -61,8 +61,9 @@ export function resolveBounce(
 
   const relVx = a.velocity.x - b.velocity.x;
   const relVy = a.velocity.y - b.velocity.y;
+  /** Inflygande hastighet längs n (a→b): avståndet minskar när (v_a−v_b)·n > 0. */
   const velAlongN = relVx * nx + relVy * ny;
-  if (velAlongN >= 0) return;
+  if (velAlongN <= 0) return;
 
   const impulse = (1 + restitution) * velAlongN / totalMass;
   a.velocity.x -= impulse * nx * mb;

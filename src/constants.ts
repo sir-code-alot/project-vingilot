@@ -88,8 +88,8 @@ export const CONFIG = {
   asteroidSpawnInterval: 2.5,
   /** Studs mellan objekt (0–1). */
   restitution: 0.75,
-  /** Antal pass kollisionslösning (asteroid–asteroid). */
-  collisionResolutionPasses: 2,
+  /** Antal pass skepp–asteroid + asteroid–asteroid (en loop; tidigare fanns extra dublett). */
+  collisionResolutionPasses: 3,
 
   /** VFX: explosion animation duration (seconds). */
   effectExplosionDuration: 0.42,
