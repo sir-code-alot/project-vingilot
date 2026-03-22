@@ -88,6 +88,11 @@ export const CONFIG = {
   asteroidSpawnInterval: 2.5,
   /** Studs mellan objekt (0–1). */
   restitution: 0.75,
+  /**
+   * Penetration under denna tjocklek (världsenheter) ger ingen positionsseparation.
+   * Motsvarar "linear slop" i vanliga 2D-motorer — minskar jitter i vila och vid flerpass-lösning.
+   */
+  collisionLinearSlop: 1.25,
   /** Antal pass skepp–asteroid + asteroid–asteroid (en loop; tidigare fanns extra dublett). */
   collisionResolutionPasses: 3,
 
