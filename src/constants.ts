@@ -29,9 +29,9 @@ export const CONFIG = {
   /** Belöning: guld per förstörd asteroid (bas + per radie). */
   asteroidGoldBase: 2,
   asteroidGoldPerRadius: 0.5,
-  /** Belöning: XP per förstörd asteroid. */
-  asteroidXpBase: 5,
-  asteroidXpPerRadius: 0.3,
+  /** Belöning: XP per förstörd asteroid. Högre = snabbare level-up. */
+  asteroidXpBase: 10,
+  asteroidXpPerRadius: 0.5,
 
   /** Skott: hastighet (världsenheter/s). */
   bulletSpeed: 420,
@@ -90,4 +90,9 @@ export const CONFIG = {
   restitution: 0.75,
   /** Antal pass kollisionslösning (asteroid–asteroid). */
   collisionResolutionPasses: 2,
+
+  /** VFX: explosion animation duration (seconds). */
+  effectExplosionDuration: 0.42,
+  /** VFX: pulse / cone pulse animation duration (seconds). */
+  effectPulseDuration: 0.32,
 } as const;
