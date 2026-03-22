@@ -16,7 +16,17 @@ export function totalXpForLevel(level: number): number {
 }
 
 /** Spelaruppgraderingar (påverkar hela skeppet). */
-export type PlayerUpgrade = "maxHp" | "damage" | "fireRate" | "lifetime" | "movementSpeed" | "healthRegen" | "luck" | "xpGain" | "goldGain";
+export type PlayerUpgrade =
+  | "maxHp"
+  | "damage"
+  | "fireRate"
+  | "lifetime"
+  | "movementSpeed"
+  | "healthRegen"
+  | "luck"
+  | "xpGain"
+  | "goldGain"
+  | "pickupRadius";
 
 /** Vapenuppgraderingar (påverkar specifikt vapen). */
 export type WeaponUpgrade =
@@ -83,6 +93,7 @@ const PLAYER_LABELS: Record<PlayerUpgrade, string> = {
   luck: "Luck",
   xpGain: "XP gain",
   goldGain: "Gold gain",
+  pickupRadius: "Pickup range",
 };
 
 const WEAPON_LABELS: Record<WeaponUpgrade, string> = {
@@ -115,6 +126,7 @@ export function generateUpgradeOptions(ship: Ship): UpgradeOption[] {
     "luck",
     "xpGain",
     "goldGain",
+    "pickupRadius",
   ];
   const weaponStats: WeaponUpgrade[] = [
     "weaponDamage",
@@ -251,6 +263,9 @@ export function applyUpgrade(ship: Ship, option: UpgradeOption): void {
       break;
     case "goldGain":
       ship.goldGainMultiplier *= mult;
+      break;
+    case "pickupRadius":
+      ship.pickupRadiusMultiplier *= mult;
       break;
   }
 }

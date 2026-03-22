@@ -10,6 +10,10 @@ export const CONFIG = {
   friction: 0.98,
   /** Skeppets kollisionsradie (för kollision med hinder/fiender). */
   shipRadius: 14,
+  /** Basradie för att plocka upp guld/XP (multipliceras med ship.pickupRadiusMultiplier). */
+  shipPickupRadiusBase: 52,
+  /** Pickups försvinner efter så här många sekunder. */
+  pickupLifetimeSeconds: 120,
   /** Dämpning vid skepp–asteroid (0 = ren reflektion, högre = mjukare omdirigering). */
   shipAsteroidDamping: 0.3,
   /** Skeppets "näsa" längd för ritning (pixlar). */
