@@ -171,12 +171,53 @@ function drawStatsUI(
   ctx.restore();
 }
 
+const LEVEL_UP_BOX_W = 200;
+const LEVEL_UP_BOX_H = 44;
+const LEVEL_UP_GAP = 16;
+
+/** Samma geometri som ritning — används för mushit-test. */
+function getLevelUpOptionRects(
+  width: number,
+  height: number,
+  optionCount: number
+): { x: number; y: number; w: number; h: number }[] {
+  const totalW = optionCount * LEVEL_UP_BOX_W + (optionCount - 1) * LEVEL_UP_GAP;
+  const baseX = (width - totalW) / 2;
+  const by = height / 2 - 20;
+  const rects: { x: number; y: number; w: number; h: number }[] = [];
+  for (let i = 0; i < optionCount; i++) {
+    rects.push({
+      x: baseX + i * (LEVEL_UP_BOX_W + LEVEL_UP_GAP),
+      y: by,
+      w: LEVEL_UP_BOX_W,
+      h: LEVEL_UP_BOX_H,
+    });
+  }
+  return rects;
+}
+
+function eventToLogicalCanvasCoords(
+  game: Game,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } {
+  const dpr = window.devicePixelRatio ?? 1;
+  const rect = game.canvas.getBoundingClientRect();
+  const logicalW = game.width / dpr;
+  const logicalH = game.height / dpr;
+  return {
+    x: ((clientX - rect.left) / rect.width) * logicalW,
+    y: ((clientY - rect.top) / rect.height) * logicalH,
+  };
+}
+
 function drawLevelUpOverlay(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   options: UpgradeOption[],
-  newLevel: number
+  newLevel: number,
+  focusedIndex: number
 ): void {
   ctx.save();
   ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
@@ -186,29 +227,33 @@ function drawLevelUpOverlay(
   ctx.fillStyle = "#8af";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(`Level ${newLevel}!`, width / 2, height / 2 - 80);
-  ctx.font = "14px sans-serif";
+  ctx.fillText(`Level ${newLevel}!`, width / 2, height / 2 - 88);
+  ctx.font = "13px sans-serif";
   ctx.fillStyle = "#aaa";
-  ctx.fillText("Choose an upgrade (1, 2, or 3)", width / 2, height / 2 - 50);
+  ctx.fillText("← → or WASD — move focus   ·   Enter / Space — confirm", width / 2, height / 2 - 54);
+  ctx.fillText("Or press 1–3 or click a box", width / 2, height / 2 - 36);
 
-  const boxW = 200;
-  const boxH = 44;
-  const gap = 16;
+  const rects = getLevelUpOptionRects(width, height, options.length);
   for (let i = 0; i < options.length; i++) {
     const opt = options[i]!;
-    const totalW = options.length * boxW + (options.length - 1) * gap;
-    const bx = (width - totalW) / 2 + i * (boxW + gap);
-    const by = height / 2 - 20;
+    const { x: bx, y: by, w: boxW, h: boxH } = rects[i]!;
+    const hovered = i === focusedIndex;
 
-    ctx.fillStyle = "rgba(40, 50, 70, 0.9)";
-    ctx.strokeStyle = "rgba(100, 140, 200, 0.6)";
-    ctx.lineWidth = 2;
+    ctx.fillStyle = hovered ? "rgba(55, 72, 110, 0.95)" : "rgba(40, 50, 70, 0.9)";
+    ctx.strokeStyle = hovered ? "rgba(170, 210, 255, 0.98)" : "rgba(100, 140, 200, 0.6)";
+    ctx.lineWidth = hovered ? 3 : 2;
+    if (hovered) {
+      ctx.shadowColor = "rgba(130, 180, 255, 0.55)";
+      ctx.shadowBlur = 14;
+    }
     ctx.fillRect(bx, by, boxW, boxH);
     ctx.strokeRect(bx, by, boxW, boxH);
+    ctx.shadowBlur = 0;
 
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = hovered ? "#f0f6ff" : "#fff";
     ctx.textAlign = "center";
     ctx.fillText(`${i + 1}. ${opt.label}`, bx + boxW / 2, by + 14);
+    ctx.fillStyle = hovered ? "#b8d8ff" : "#fff";
     ctx.fillText(`[${i + 1}]`, bx + boxW / 2, by + 32);
   }
   ctx.textAlign = "left";
@@ -361,6 +406,11 @@ export interface Game {
   asteroidSpawnTimer: number;
   /** Visas vid level-up; null = ej aktiv. */
   levelUpMenu: { options: UpgradeOption[]; newLevel: number } | null;
+  /**
+   * Fokuserat level-up-alternativ (0..n-1). Uppdateras med pilar/WASD och mus över ruta.
+   * Enter/Space väljer detta alternativ.
+   */
+  levelUpFocusedOption: number;
 }
 
 function getWorldSize(game: Game): { worldW: number; worldH: number } {
@@ -384,6 +434,7 @@ function resetGame(game: Game): void {
   game.running = true;
   game.paused = false;
   game.levelUpMenu = null;
+  game.levelUpFocusedOption = 0;
 }
 
 function getContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -449,6 +500,7 @@ export function createGame(canvas: HTMLCanvasElement): Game {
     paused: false,
     asteroidSpawnTimer: 0,
     levelUpMenu: null,
+    levelUpFocusedOption: 0,
   };
 
   const keyMap: Record<string, "up" | "left" | "right" | "fire"> = {
@@ -463,12 +515,48 @@ export function createGame(canvas: HTMLCanvasElement): Game {
 
   const handleKeyDown = (e: KeyboardEvent) => {
     if (game.levelUpMenu) {
+      const opts = game.levelUpMenu.options;
+      const nOpt = opts.length;
+
+      const movePrev =
+        e.code === "ArrowLeft" ||
+        e.code === "KeyA" ||
+        e.code === "ArrowUp" ||
+        e.code === "KeyW";
+      const moveNext =
+        e.code === "ArrowRight" ||
+        e.code === "KeyD" ||
+        e.code === "ArrowDown" ||
+        e.code === "KeyS";
+
+      if (movePrev) {
+        game.levelUpFocusedOption = (game.levelUpFocusedOption - 1 + nOpt) % nOpt;
+        e.preventDefault();
+        return;
+      }
+      if (moveNext) {
+        game.levelUpFocusedOption = (game.levelUpFocusedOption + 1) % nOpt;
+        e.preventDefault();
+        return;
+      }
+
+      if (e.code === "Enter" || e.code === "Space") {
+        const i = Math.max(0, Math.min(game.levelUpFocusedOption, nOpt - 1));
+        applyUpgrade(game.ship, opts[i]!);
+        game.levelUpMenu = null;
+        game.paused = false;
+        canvas.style.cursor = "";
+        e.preventDefault();
+        return;
+      }
+
       const n = e.code === "Digit1" ? 1 : e.code === "Digit2" ? 2 : e.code === "Digit3" ? 3 : 0;
-      if (n >= 1 && n <= game.levelUpMenu.options.length) {
-        const opt = game.levelUpMenu.options[n - 1]!;
+      if (n >= 1 && n <= nOpt) {
+        const opt = opts[n - 1]!;
         applyUpgrade(game.ship, opt);
         game.levelUpMenu = null;
         game.paused = false;
+        canvas.style.cursor = "";
         e.preventDefault();
       }
       return;
@@ -507,9 +595,62 @@ export function createGame(canvas: HTMLCanvasElement): Game {
     }
   };
 
+  const handleCanvasClick = (e: MouseEvent) => {
+    if (!game.levelUpMenu) return;
+    const dpr = window.devicePixelRatio ?? 1;
+    const logicalW = game.width / dpr;
+    const logicalH = game.height / dpr;
+    const { x, y } = eventToLogicalCanvasCoords(game, e.clientX, e.clientY);
+    const rects = getLevelUpOptionRects(logicalW, logicalH, game.levelUpMenu.options.length);
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i]!;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        applyUpgrade(game.ship, game.levelUpMenu.options[i]!);
+        game.levelUpMenu = null;
+        game.paused = false;
+        canvas.style.cursor = "";
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  const handleCanvasMove = (e: MouseEvent) => {
+    if (!game.levelUpMenu) {
+      canvas.style.cursor = "";
+      return;
+    }
+    const dpr = window.devicePixelRatio ?? 1;
+    const logicalW = game.width / dpr;
+    const logicalH = game.height / dpr;
+    const { x, y } = eventToLogicalCanvasCoords(game, e.clientX, e.clientY);
+    const rects = getLevelUpOptionRects(logicalW, logicalH, game.levelUpMenu.options.length);
+    let hovered: number | null = null;
+    for (let i = 0; i < rects.length; i++) {
+      const r = rects[i]!;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        hovered = i;
+        break;
+      }
+    }
+    if (hovered !== null) {
+      game.levelUpFocusedOption = hovered;
+    }
+    canvas.style.cursor = hovered !== null ? "pointer" : "default";
+  };
+
+  const handleCanvasLeave = () => {
+    if (game.levelUpMenu) {
+      canvas.style.cursor = "default";
+    }
+  };
+
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("keyup", handleKeyUp);
   window.addEventListener("resize", () => resizeCanvas(canvas, game));
+  canvas.addEventListener("click", handleCanvasClick);
+  canvas.addEventListener("mousemove", handleCanvasMove);
+  canvas.addEventListener("mouseleave", handleCanvasLeave);
 
   return game;
 }
@@ -720,6 +861,7 @@ function tick(game: Game, time: number): void {
         options: generateUpgradeOptions(game.ship),
         newLevel: game.ship.level,
       };
+      game.levelUpFocusedOption = 0;
     }
 
     game.asteroidSpawnTimer += dt;
@@ -779,7 +921,8 @@ function tick(game: Game, time: number): void {
       logicalWidth,
       logicalHeight,
       game.levelUpMenu.options,
-      game.levelUpMenu.newLevel
+      game.levelUpMenu.newLevel,
+      Math.max(0, Math.min(game.levelUpFocusedOption, game.levelUpMenu.options.length - 1))
     );
   } else if (game.paused) {
     drawPauseOverlay(game.ctx, logicalWidth, logicalHeight, game.ship);
