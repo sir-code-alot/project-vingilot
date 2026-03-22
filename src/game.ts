@@ -9,7 +9,6 @@ import {
   asteroidCollisionCircle,
   asteroidMovingCircle,
   isAsteroidDead,
-  getAsteroidReward,
   spawnAsteroidAtEdge,
 } from "./entities/asteroid.js";
 import type { Projectile, Bomb, Mine, LaserLine } from "./projectiles.js";
@@ -46,6 +45,15 @@ import {
   drawEffect,
   type GameEffect,
 } from "./effects.js";
+import {
+  spawnPickupsFromAsteroid,
+  updatePickup,
+  tryCollectPickup,
+  isPickupExpired,
+  drawPickup,
+  getShipPickupRadius,
+  type Pickup,
+} from "./pickups.js";
 
 function drawStatsUI(
   ctx: CanvasRenderingContext2D,
@@ -216,7 +224,7 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, width: number, height: 
   const statsLineH = 16;
   const statsFont = "12px sans-serif";
   const panelW = 280;
-  const panelH = pad * 2 + 8 * statsLineH;
+  const panelH = pad * 2 + 9 * statsLineH;
   const gap = 20;
 
   let y = 36;
@@ -250,6 +258,7 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, width: number, height: 
     ["Luck", `${ship.luck.toFixed(1)}×`],
     ["XP gain", `${ship.xpGainMultiplier.toFixed(1)}×`],
     ["Gold gain", `${ship.goldGainMultiplier.toFixed(1)}×`],
+    ["Pickup range", `${getShipPickupRadius(ship).toFixed(0)}`],
   ];
   for (let i = 0; i < statLabels.length; i++) {
     const [label, value] = statLabels[i]!;
@@ -342,6 +351,7 @@ export interface Game {
   mines: Mine[];
   lasers: LaserLine[];
   effects: GameEffect[];
+  pickups: Pickup[];
   keys: InputState;
   width: number;
   height: number;
@@ -369,6 +379,7 @@ function resetGame(game: Game): void {
   game.mines = [];
   game.lasers = [];
   game.effects = [];
+  game.pickups = [];
   game.asteroidSpawnTimer = 0;
   game.running = true;
   game.paused = false;
@@ -429,6 +440,7 @@ export function createGame(canvas: HTMLCanvasElement): Game {
     mines: [],
     lasers: [],
     effects: [],
+    pickups: [],
     keys: { up: false, left: false, right: false, fire: false, selectedSlot: 0 },
     width,
     height,
@@ -682,12 +694,21 @@ function tick(game: Game, time: number): void {
     game.effects = game.effects.filter((e) => isEffectAlive(e, nowSec));
     for (const asteroid of game.asteroids) {
       if (isAsteroidDead(asteroid)) {
-        const reward = getAsteroidReward(asteroid);
-        game.ship.gold += Math.floor(reward.gold * game.ship.luck * game.ship.goldGainMultiplier);
-        game.ship.xp += Math.floor(reward.xp * game.ship.luck * game.ship.xpGainMultiplier);
+        spawnPickupsFromAsteroid(game.pickups, asteroid);
       }
     }
     game.asteroids = game.asteroids.filter((a) => !isAsteroidDead(a));
+
+    for (const pickup of game.pickups) {
+      updatePickup(pickup, dt, worldWidth, worldHeight);
+    }
+    const keptPickups: Pickup[] = [];
+    for (const pickup of game.pickups) {
+      if (tryCollectPickup(pickup, game.ship)) continue;
+      if (isPickupExpired(pickup)) continue;
+      keptPickups.push(pickup);
+    }
+    game.pickups = keptPickups;
 
     if (
       !game.levelUpMenu &&
@@ -716,6 +737,9 @@ function tick(game: Game, time: number): void {
   drawStarfield(game.ctx, game.stars, worldWidth, worldHeight, time / 1000);
   for (const asteroid of game.asteroids) {
     drawAsteroid(game.ctx, asteroid, time / 1000);
+  }
+  for (const pickup of game.pickups) {
+    drawPickup(game.ctx, pickup);
   }
   drawShip(game.ctx, game.ship);
   for (const p of game.projectiles) {

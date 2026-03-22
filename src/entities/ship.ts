@@ -34,6 +34,8 @@ export interface Ship {
   xpGainMultiplier: number;
   /** Guld-multiplikator – påverkar hur mycket guld man får. Bas 1, uppgraderbar. */
   goldGainMultiplier: number;
+  /** Plockradie-multiplikator (× shipPickupRadiusBase). Bas 1, uppgraderbar. */
+  pickupRadiusMultiplier: number;
   /** Samlad guld. */
   gold: number;
   /** Samlad XP. */
@@ -60,6 +62,7 @@ export function createShip(centerX: number, centerY: number): Ship {
     luck: 1,
     xpGainMultiplier: 1,
     goldGainMultiplier: 1,
+    pickupRadiusMultiplier: 1,
     gold: 0,
     xp: 0,
     level: 1,
