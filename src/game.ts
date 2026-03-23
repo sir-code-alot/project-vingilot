@@ -61,7 +61,8 @@ function drawStatsUI(
   width: number,
   height: number,
   running: boolean,
-  gameTimeSeconds: number
+  gameTimeSeconds: number,
+  restartConfirmPending: boolean
 ): void {
   const pad = 12;
   const lineH = 18;
@@ -163,9 +164,11 @@ function drawStatsUI(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("GAME OVER", width / 2, height / 2);
-    ctx.font = "14px sans-serif";
-    ctx.fillStyle = "#ccc";
-    ctx.fillText("Press R to restart", width / 2, height / 2 + 36);
+    if (!restartConfirmPending) {
+      ctx.font = "13px sans-serif";
+      ctx.fillStyle = "#ccc";
+      ctx.fillText("R — new run (asks for confirmation)", width / 2, height / 2 + 34);
+    }
     ctx.textAlign = "left";
   }
   ctx.restore();
@@ -209,6 +212,79 @@ function eventToLogicalCanvasCoords(
     x: ((clientX - rect.left) / rect.width) * logicalW,
     y: ((clientY - rect.top) / rect.height) * logicalH,
   };
+}
+
+const RESTART_BTN_W = 148;
+const RESTART_BTN_H = 40;
+const RESTART_BTN_GAP = 20;
+
+/** 0 = Restart (destruktiv), 1 = Cancel — defaultfokus 1 enligt UX. */
+function getRestartConfirmButtonRects(width: number, height: number): {
+  restart: { x: number; y: number; w: number; h: number };
+  cancel: { x: number; y: number; w: number; h: number };
+} {
+  const totalW = RESTART_BTN_W * 2 + RESTART_BTN_GAP;
+  const baseX = (width - totalW) / 2;
+  const by = height / 2 + 28;
+  return {
+    restart: { x: baseX, y: by, w: RESTART_BTN_W, h: RESTART_BTN_H },
+    cancel: { x: baseX + RESTART_BTN_W + RESTART_BTN_GAP, y: by, w: RESTART_BTN_W, h: RESTART_BTN_H },
+  };
+}
+
+function drawRestartConfirmOverlay(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  focusedIndex: 0 | 1
+): void {
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.font = "22px sans-serif";
+  ctx.fillStyle = "#e8eef8";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Start a new run?", width / 2, height / 2 - 56);
+  ctx.font = "13px sans-serif";
+  ctx.fillStyle = "#9aa4b8";
+  ctx.fillText("Level, gold, pickups and upgrades will be lost.", width / 2, height / 2 - 26);
+
+  const { restart, cancel } = getRestartConfirmButtonRects(width, height);
+  const labels: [typeof restart, string, 0 | 1][] = [
+    [restart, "Restart", 0],
+    [cancel, "Cancel", 1],
+  ];
+
+  for (const [rect, label, idx] of labels) {
+    const focused = idx === focusedIndex;
+    const destructive = idx === 0;
+    if (destructive) {
+      ctx.fillStyle = focused ? "rgba(88, 42, 48, 0.96)" : "rgba(52, 38, 42, 0.92)";
+      ctx.strokeStyle = focused ? "rgba(255, 150, 130, 0.95)" : "rgba(140, 80, 80, 0.45)";
+    } else {
+      ctx.fillStyle = focused ? "rgba(52, 60, 78, 0.96)" : "rgba(42, 48, 58, 0.92)";
+      ctx.strokeStyle = focused ? "rgba(150, 195, 255, 0.9)" : "rgba(100, 120, 150, 0.45)";
+    }
+    ctx.lineWidth = focused ? 3 : 2;
+    if (focused) {
+      ctx.shadowColor = destructive ? "rgba(255, 120, 100, 0.3)" : "rgba(130, 180, 255, 0.35)";
+      ctx.shadowBlur = 12;
+    }
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = focused ? "#fff" : "#ccd6e6";
+    ctx.font = "14px sans-serif";
+    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
+  }
+
+  ctx.font = "12px sans-serif";
+  ctx.fillStyle = "#7a8498";
+  ctx.fillText("← / → — focus    Enter — activate    R again — restart    Esc — cancel", width / 2, height / 2 + 88);
+  ctx.textAlign = "left";
+  ctx.restore();
 }
 
 function drawLevelUpOverlay(
@@ -371,7 +447,7 @@ function drawPauseOverlay(ctx: CanvasRenderingContext2D, width: number, height: 
   ctx.textBaseline = "top";
   ctx.fillText("1/2/3 — Select weapon", width / 2, y);
   ctx.fillText("Escape — Resume", width / 2, y + 24);
-  ctx.fillText("R — Restart", width / 2, y + 48);
+  ctx.fillText("R — New run (asks confirmation)", width / 2, y + 48);
   ctx.textAlign = "left";
   ctx.restore();
 }
@@ -411,6 +487,10 @@ export interface Game {
    * Enter/Space väljer detta alternativ.
    */
   levelUpFocusedOption: number;
+  /** True när spelaren bett om omstart och bekräftelsedialog visas. */
+  restartConfirmPending: boolean;
+  /** 0 = Restart, 1 = Cancel — standard 1 (säkert standardval). */
+  restartConfirmFocusedOption: 0 | 1;
 }
 
 function getWorldSize(game: Game): { worldW: number; worldH: number } {
@@ -435,6 +515,8 @@ function resetGame(game: Game): void {
   game.paused = false;
   game.levelUpMenu = null;
   game.levelUpFocusedOption = 0;
+  game.restartConfirmPending = false;
+  game.restartConfirmFocusedOption = 1;
 }
 
 function getContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -501,6 +583,8 @@ export function createGame(canvas: HTMLCanvasElement): Game {
     asteroidSpawnTimer: 0,
     levelUpMenu: null,
     levelUpFocusedOption: 0,
+    restartConfirmPending: false,
+    restartConfirmFocusedOption: 1,
   };
 
   const keyMap: Record<string, "up" | "left" | "right" | "fire"> = {
@@ -561,12 +645,47 @@ export function createGame(canvas: HTMLCanvasElement): Game {
       }
       return;
     }
+
+    const restartDialogActive =
+      game.restartConfirmPending &&
+      !game.levelUpMenu &&
+      (!game.running || (game.paused && game.ship.hp > 0));
+
+    if (restartDialogActive) {
+      if (e.code === "ArrowLeft" || e.code === "KeyA") {
+        game.restartConfirmFocusedOption = 0;
+        e.preventDefault();
+        return;
+      }
+      if (e.code === "ArrowRight" || e.code === "KeyD") {
+        game.restartConfirmFocusedOption = 1;
+        e.preventDefault();
+        return;
+      }
+      if (e.code === "Enter" || e.code === "Space") {
+        if (game.restartConfirmFocusedOption === 0) {
+          resetGame(game);
+          game.restartConfirmPending = false;
+          canvas.style.cursor = "";
+        } else {
+          game.restartConfirmPending = false;
+        }
+        e.preventDefault();
+        return;
+      }
+    }
+
     const weaponSlot = e.code === "Digit1" ? 0 : e.code === "Digit2" ? 1 : e.code === "Digit3" ? 2 : -1;
     if (weaponSlot >= 0) {
       game.ship.selectedWeaponSlot = weaponSlot as 0 | 1 | 2;
       game.keys.selectedSlot = weaponSlot as 0 | 1 | 2;
     }
     if (e.code === "Escape") {
+      if (game.restartConfirmPending) {
+        game.restartConfirmPending = false;
+        e.preventDefault();
+        return;
+      }
       if (game.running && game.ship.hp > 0 && !game.levelUpMenu) {
         game.paused = !game.paused;
         e.preventDefault();
@@ -574,10 +693,21 @@ export function createGame(canvas: HTMLCanvasElement): Game {
       return;
     }
     if (e.code === "KeyR") {
-      if (!game.running || (game.paused && !game.levelUpMenu)) {
-        resetGame(game);
-        e.preventDefault();
+      const canAskRestart =
+        !game.running || (game.paused && game.ship.hp > 0 && !game.levelUpMenu);
+      if (!canAskRestart) {
+        return;
       }
+      if (game.restartConfirmPending) {
+        resetGame(game);
+        game.restartConfirmPending = false;
+        canvas.style.cursor = "";
+        e.preventDefault();
+        return;
+      }
+      game.restartConfirmPending = true;
+      game.restartConfirmFocusedOption = 1;
+      e.preventDefault();
       return;
     }
     const key = keyMap[e.code];
@@ -596,6 +726,33 @@ export function createGame(canvas: HTMLCanvasElement): Game {
   };
 
   const handleCanvasClick = (e: MouseEvent) => {
+    const restartDialogActive =
+      game.restartConfirmPending &&
+      !game.levelUpMenu &&
+      (!game.running || (game.paused && game.ship.hp > 0));
+    if (restartDialogActive) {
+      const dpr = window.devicePixelRatio ?? 1;
+      const logicalW = game.width / dpr;
+      const logicalH = game.height / dpr;
+      const { x, y } = eventToLogicalCanvasCoords(game, e.clientX, e.clientY);
+      const { restart, cancel } = getRestartConfirmButtonRects(logicalW, logicalH);
+      const inR = x >= restart.x && x <= restart.x + restart.w && y >= restart.y && y <= restart.y + restart.h;
+      const inC = x >= cancel.x && x <= cancel.x + cancel.w && y >= cancel.y && y <= cancel.y + cancel.h;
+      if (inR) {
+        resetGame(game);
+        game.restartConfirmPending = false;
+        canvas.style.cursor = "";
+        e.preventDefault();
+        return;
+      }
+      if (inC) {
+        game.restartConfirmPending = false;
+        e.preventDefault();
+        return;
+      }
+      return;
+    }
+
     if (!game.levelUpMenu) return;
     const dpr = window.devicePixelRatio ?? 1;
     const logicalW = game.width / dpr;
@@ -616,6 +773,29 @@ export function createGame(canvas: HTMLCanvasElement): Game {
   };
 
   const handleCanvasMove = (e: MouseEvent) => {
+    const restartDialogActive =
+      game.restartConfirmPending &&
+      !game.levelUpMenu &&
+      (!game.running || (game.paused && game.ship.hp > 0));
+    if (restartDialogActive) {
+      const dpr = window.devicePixelRatio ?? 1;
+      const logicalW = game.width / dpr;
+      const logicalH = game.height / dpr;
+      const { x, y } = eventToLogicalCanvasCoords(game, e.clientX, e.clientY);
+      const { restart, cancel } = getRestartConfirmButtonRects(logicalW, logicalH);
+      let over: 0 | 1 | null = null;
+      if (x >= restart.x && x <= restart.x + restart.w && y >= restart.y && y <= restart.y + restart.h) {
+        over = 0;
+      } else if (x >= cancel.x && x <= cancel.x + cancel.w && y >= cancel.y && y <= cancel.y + cancel.h) {
+        over = 1;
+      }
+      if (over !== null) {
+        game.restartConfirmFocusedOption = over;
+      }
+      canvas.style.cursor = over !== null ? "pointer" : "default";
+      return;
+    }
+
     if (!game.levelUpMenu) {
       canvas.style.cursor = "";
       return;
@@ -912,7 +1092,8 @@ function tick(game: Game, time: number): void {
     logicalWidth,
     logicalHeight,
     game.running,
-    time / 1000
+    time / 1000,
+    game.restartConfirmPending
   );
 
   if (game.levelUpMenu) {
@@ -927,14 +1108,23 @@ function tick(game: Game, time: number): void {
   } else if (game.paused) {
     drawPauseOverlay(game.ctx, logicalWidth, logicalHeight, game.ship);
   }
+
+  const showRestartDialog =
+    game.restartConfirmPending &&
+    !game.levelUpMenu &&
+    (!game.running || (game.paused && game.ship.hp > 0));
+  if (showRestartDialog) {
+    drawRestartConfirmOverlay(
+      game.ctx,
+      logicalWidth,
+      logicalHeight,
+      game.restartConfirmFocusedOption
+    );
+  }
 }
 
 export function runGameLoop(game: Game): void {
   function frame(time: number): void {
-    if (!game.running) {
-      requestAnimationFrame(frame);
-      return;
-    }
     tick(game, time);
     requestAnimationFrame(frame);
   }
