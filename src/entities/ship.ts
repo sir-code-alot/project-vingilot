@@ -9,6 +9,8 @@ export interface Ship {
   position: Vec2;
   velocity: Vec2;
   rotation: number;
+  /** Vinkelhastighet (rad/s); mjukas mot ±turnSpeed vid styrning. */
+  angularVelocity: number;
   thrusting: boolean;
   /** Nuvarande HP. */
   hp: number;
@@ -49,6 +51,7 @@ export function createShip(centerX: number, centerY: number): Ship {
     position: { x: centerX, y: centerY },
     velocity: { x: 0, y: 0 },
     rotation: -Math.PI / 2,
+    angularVelocity: 0,
     thrusting: false,
     hp: CONFIG.shipMaxHp,
     maxHp: CONFIG.shipMaxHp,
@@ -70,8 +73,22 @@ export function createShip(centerX: number, centerY: number): Ship {
 }
 
 export function updateShip(ship: Ship, dt: number, keys: { up: boolean; left: boolean; right: boolean }): void {
-  if (keys.left) ship.rotation -= CONFIG.turnSpeed * dt;
-  if (keys.right) ship.rotation += CONFIG.turnSpeed * dt;
+  const turn = CONFIG.turnSpeed;
+  let targetOmega = 0;
+  if (keys.left && !keys.right) targetOmega = -turn;
+  else if (keys.right && !keys.left) targetOmega = turn;
+
+  const tau = CONFIG.turnSmoothingSeconds;
+  if (targetOmega === 0) {
+    ship.angularVelocity = 0;
+  } else if (tau <= 0) {
+    ship.angularVelocity = targetOmega;
+  } else {
+    const k = 1 - Math.exp(-dt / tau);
+    ship.angularVelocity += (targetOmega - ship.angularVelocity) * k;
+  }
+  ship.rotation += ship.angularVelocity * dt;
+
   if (keys.up) {
     const thrustVec = scale(
       fromAngle(ship.rotation),

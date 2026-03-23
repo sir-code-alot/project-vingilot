@@ -4,8 +4,13 @@ export const CONFIG = {
   zoom: 0.5,
   /** Hastighet när man trycker framåt. */
   thrust: 280,
-  /** Rotationshastighet (radianer per sekund). */
+  /** Rotationshastighet (radianer per sekund) vid fullt utslag. */
   turnSpeed: 4.5,
+  /**
+   * Tid (s) för vinkelhastigheten att närma sig målvärdet (första ordningens lag).
+   * 0 = omedelbar rotation som tidigare. Lågt värde = mjukare tryck, samma maxhastighet när tangenten hålls.
+   */
+  turnSmoothingSeconds: 0.072,
   /** Friktion (0–1). 0 = ingen, 1 = stannar direkt. */
   friction: 0.98,
   /** Skeppets kollisionsradie (för kollision med hinder/fiender). */
