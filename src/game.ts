@@ -306,7 +306,7 @@ function drawLevelUpOverlay(
   ctx.fillText(`Level ${newLevel}!`, width / 2, height / 2 - 88);
   ctx.font = "13px sans-serif";
   ctx.fillStyle = "#aaa";
-  ctx.fillText("← → or WASD — move focus   ·   Enter / Space — confirm", width / 2, height / 2 - 54);
+  ctx.fillText("← → or WASD — move focus   ·   Enter — confirm", width / 2, height / 2 - 54);
   ctx.fillText("Or press 1–3 or click a box", width / 2, height / 2 - 36);
 
   const rects = getLevelUpOptionRects(width, height, options.length);
@@ -484,7 +484,7 @@ export interface Game {
   levelUpMenu: { options: UpgradeOption[]; newLevel: number } | null;
   /**
    * Fokuserat level-up-alternativ (0..n-1). Uppdateras med pilar/WASD och mus över ruta.
-   * Enter/Space väljer detta alternativ.
+   * Enter väljer det fokuserade alternativet (Space används inte — undviker oavsiktlig val vid hållen eld).
    */
   levelUpFocusedOption: number;
   /** True när spelaren bett om omstart och bekräftelsedialog visas. */
@@ -624,12 +624,17 @@ export function createGame(canvas: HTMLCanvasElement): Game {
         return;
       }
 
-      if (e.code === "Enter" || e.code === "Space") {
+      if (e.code === "Enter") {
         const i = Math.max(0, Math.min(game.levelUpFocusedOption, nOpt - 1));
         applyUpgrade(game.ship, opts[i]!);
         game.levelUpMenu = null;
         game.paused = false;
         canvas.style.cursor = "";
+        e.preventDefault();
+        return;
+      }
+
+      if (e.code === "Space") {
         e.preventDefault();
         return;
       }
